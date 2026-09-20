@@ -112,11 +112,11 @@ class BaseSampler(metaclass=ABCMeta):
         action, logp = action_distribution.sample()
 
         if self._is_vector:
-            action = action.detach().numpy()
-            logp = logp.detach().numpy()
+            action = action.detach().cpu().numpy()
+            logp = logp.detach().cpu().numpy()
         else:
-            action = action.detach()[0].numpy()
-            logp = logp.detach()[0].numpy()
+            action = action.detach().cpu()[0].numpy()
+            logp = logp.detach().cpu()[0].numpy()
 
         if self.noise_params is not None:
             action = self.noise_processor.sample(action)

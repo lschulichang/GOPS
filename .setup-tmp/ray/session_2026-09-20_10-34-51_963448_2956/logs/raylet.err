@@ -1,0 +1,19 @@
+[2026-09-20 10:34:58,096 E 27144 29700] (raylet.exe) agent_manager.cc:84: The raylet exited immediately because one Ray agent failed, agent_name = runtime_env_agent.
+The raylet fate shares with the agent. This can happen because
+- The version of `grpcio` doesn't follow Ray's requirement. Agent can segfault with the incorrect `grpcio` version. Check the grpcio version `pip freeze | grep grpcio`.
+- The agent failed to start because of unexpected error or port conflict. Read the log `cat /tmp/ray/session_latest/logs/{dashboard_agent|runtime_env_agent}.log`. You can find the log file structure here https://docs.ray.io/en/master/ray-observability/ray-logging.html#logging-directory-structure.
+- The agent is killed by the OS (e.g., out of memory).
+*** SIGTERM received at time=1789871698 ***
+    @   00007FF75F435B06  (unknown)  (unknown)
+    @   00007FF75F44C5B6  (unknown)  (unknown)
+    @   00007FF75F44BCEE  (unknown)  (unknown)
+    @   00007FFF4C09CD30  (unknown)  wcsrchr
+    @   00007FFF4D4BCD87  (unknown)  BaseThreadInitThunk
+    @   00007FFF4EDACAEC  (unknown)  RtlUserThreadStart
+[2026-09-20 10:34:58,106 E 27144 29700] (raylet.exe) logging.cc:361: *** SIGTERM received at time=1789871698 ***
+[2026-09-20 10:34:58,106 E 27144 29700] (raylet.exe) logging.cc:361:     @   00007FF75F435B06  (unknown)  (unknown)
+[2026-09-20 10:34:58,106 E 27144 29700] (raylet.exe) logging.cc:361:     @   00007FF75F44C5B6  (unknown)  (unknown)
+[2026-09-20 10:34:58,106 E 27144 29700] (raylet.exe) logging.cc:361:     @   00007FF75F44BCEE  (unknown)  (unknown)
+[2026-09-20 10:34:58,106 E 27144 29700] (raylet.exe) logging.cc:361:     @   00007FFF4C09CD30  (unknown)  wcsrchr
+[2026-09-20 10:34:58,106 E 27144 29700] (raylet.exe) logging.cc:361:     @   00007FFF4D4BCD87  (unknown)  BaseThreadInitThunk
+[2026-09-20 10:34:58,106 E 27144 29700] (raylet.exe) logging.cc:361:     @   00007FFF4EDACAEC  (unknown)  RtlUserThreadStart
