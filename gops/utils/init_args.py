@@ -111,9 +111,9 @@ def init_args(env, **args):
         dir_path = os.path.dirname(dir_path)
         dir_path = os.path.dirname(dir_path)
         args["save_folder"] = os.path.join(
-            dir_path + "/results/",args["env_id"],
-            args["algorithm"] +'_'+
-            datetime.datetime.now().strftime("%y%m%d-%H%M%S"),
+            dir_path, "results", args["algorithm"],
+            args["env_id"] + "_" +
+            datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f"),
         )
     os.makedirs(args["save_folder"], exist_ok=True)
     os.makedirs(args["save_folder"] + "/apprfunc", exist_ok=True)
