@@ -26,6 +26,8 @@ from gops.utils.tensorboard_setup import start_tensorboard, save_tb_to_csv
 if __name__ == "__main__":
     # Parameters Setup
     parser = argparse.ArgumentParser()
+    parser.add_argument("--no_tensorboard", action="store_true",
+                        help="Skip the TensorBoard server; still save training logs")
 
     ################################################
     # Key Parameters for users
@@ -166,7 +168,8 @@ if __name__ == "__main__":
     env = create_env(**args)
     args = init_args(env, **args)
 
-    start_tensorboard(args["save_folder"])
+    if not args["no_tensorboard"]:
+        start_tensorboard(args["save_folder"])
     # Step 1: create algorithm and approximate function
     alg = create_alg(**args)
     # Step 2: create sampler in trainer

@@ -154,16 +154,21 @@ class PPO(AlgorithmBase):
                     approximate_kl,
                     clip_fra,
                 ) = self._compute_loss(mb_sample, iteration)
-                self.approximate_optimizer.zero_grad()
+                self.networks.policy_optimizer.zero_grad()
+                self.networks.value_optimizer.zero_grad()
                 loss_total.backward()
-                self.approximate_optimizer.step()
+                self.networks.policy_optimizer.step()
+                self.networks.value_optimizer.step()
                 if self.schedule_lr == "linear":
                     decay_rate = 1 - (iteration / self.max_iteration)
                     assert decay_rate >= 0, "the decay_rate is less than 0!"
                     lr_now = self.learning_rate * decay_rate
                     # set learning rate
-                    for g in self.approximate_optimizer.param_groups:
-                        g["lr"] = lr_now
+                    for optimizer in (
+                        self.networks.policy_optimizer, self.networks.value_optimizer
+                    ):
+                        for g in optimizer.param_groups:
+                            g["lr"] = lr_now
 
         end_time = time.perf_counter()
 

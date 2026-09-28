@@ -118,6 +118,8 @@ def self_plot(
         pass
     else:
         plt.savefig(fname)
+        if os.path.splitext(fname)[1].lower() in (".tif", ".tiff"):
+            plt.savefig(os.path.splitext(fname)[0] + ".png")
 
 
 def cm2inch(*tupl):
