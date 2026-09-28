@@ -1,0 +1,111 @@
+# GOPS 一周学习计划：看懂 PPO、SAC 与环境的数据流
+
+> 学习量：一周 5 次，每次约 1 小时。按顺序完成即可，不要求连续五天。目标是能沿源码解释“一次动作怎样产生、环境怎样反馈、算法怎样用这批数据更新”，而不是训练出高性能策略。
+
+## 这一周只抓一条主线
+
+```text
+环境 reset() 给出观测 obs
+    ↓
+策略网络根据 obs 产生动作 act
+    ↓
+环境 step(act) 返回下一个观测、奖励 rew、结束标志 done、附加信息
+    ↓
+采样器整理数据 → 训练器交给算法 → 算法计算损失并更新网络
+```
+
+两种算法先用**同一个倒立摆任务 `gym_pendulum`**作对照，避免环境差异干扰理解。车辆部分只选 `veh3dof_tracking`，重点看环境如何组织车辆状态、参考轨迹、观测和奖励。仓库没有与该新式车辆环境直接配套的 PPO/SAC 训练脚本；这一周只把它接入上述通用交互图，不安排车辆训练。
+
+### 只需认识的目录
+
+| 目录 | 本周用途 |
+| --- | --- |
+| `example_train/ppo/`、`example_train/sac/` | 找训练入口和默认参数 |
+| `gops/create_pkg/` | 看 `env_id`、`algorithm`、`trainer` 如何对应到实际组件 |
+| `gops/trainer/` | 看训练循环、采样器和 SAC 使用的回放缓存 |
+| `gops/algorithm/` | 看 PPO 与 SAC 怎样计算损失、更新网络 |
+| `gops/env/env_gen_ocp/` | 看三自由度车辆轨迹跟踪任务 |
+
+## 第 1 次：先找到完整调用链
+
+**先做什么（10 分钟）：**打开 `example_train/ppo/ppo_mlp_pendulum_onserial.py` 和 `example_train/sac/sac_mlp_pendulum_offserial.py`，只看默认的 `env_id`、`algorithm`、`trainer`，再看两个脚本底部创建组件和 `trainer.train()` 的顺序。两者默认都是 `gym_pendulum`，但训练器分别是 `on_serial_trainer` 和 `off_serial_trainer`。
+
+**沿代码走（40 分钟）：**从脚本底部追到 `gops/create_pkg/create_env.py`、`create_alg.py`、`create_sampler.py`、`create_trainer.py`；接着分别找到两个训练器的 `step()`。先只回答“谁创建组件、谁调用采样器、谁调用算法更新”。
+
+**留下成果（10 分钟）：**画一张不超过 8 个框的总数据流图，并在每个框旁写对应路径。标出 `obs`（当前观测）、`act`（动作）、`rew`（奖励）、`done`（是否结束）和 `next_obs`（下一观测；SAC 回放缓存中叫 `obs2`）。
+
+**完成标准：**能从任一训练入口指出 `trainer.train()`、训练器 `step()` 和算法 `local_update()` 各在哪里。
+
+## 第 2 次：看懂 PPO 的数据流
+
+**先做什么（10 分钟）：**从 `ppo_mlp_pendulum_onserial.py` 确认 `sampler_name=on_sampler`、`trainer=on_serial_trainer`，并找出采样批量、重复训练次数和小批量参数。
+
+**沿代码走（40 分钟）：**按下面的顺序阅读，每处只追与数据流有关的函数：
+
+```text
+gops/trainer/on_serial_trainer.py        step()
+  → gops/trainer/sampler/on_sampler.py   _sample()、_process_experiences()、_finish_trajs()
+  → gops/trainer/sampler/base.py         _step()：策略出动作，环境返回结果
+  → gops/algorithm/ppo.py                local_update()、_compute_loss()
+```
+
+看清 `logp` 是采样动作时的对数概率，`adv` 和 `ret` 在 `OnSampler._finish_trajs()` 中根据奖励、价值估计等计算；PPO 随后将这批数据分成小批量、多次更新。第一遍只理解这些量的来源与去向，不必推完所有公式。
+
+**留下成果（10 分钟）：**画出“当前策略采样 → 形成 `obs/act/logp/adv/ret` → PPO 计算损失 → 更新网络”的单次迭代流程图。
+
+**完成标准：**能指着源码说明 `env.step()` 在哪里被调用、`adv/ret` 在哪里产生、PPO 在哪里反向传播和更新参数。
+
+## 第 3 次：看懂 SAC 的数据流
+
+**先做什么（10 分钟）：**从 `sac_mlp_pendulum_offserial.py` 确认 `sampler_name=off_sampler`、`trainer=off_serial_trainer`、`buffer_name=replay_buffer`，记录采样批量、缓存预热量和回放批量各是什么。
+
+**沿代码走（40 分钟）：**按下面的顺序阅读：
+
+```text
+gops/trainer/off_serial_trainer.py       __init__() 预热缓存；step() 采样、回放、更新
+  → gops/trainer/sampler/off_sampler.py  _sample()
+  → gops/trainer/sampler/base.py         _step()：策略与环境交互
+  → gops/trainer/buffer/replay_buffer.py add_batch()、sample_batch()
+  → gops/algorithm/sac.py               local_update()、Q/策略/温度损失相关函数
+```
+
+重点追踪一条经验中的 `obs、act、rew、obs2、done、logp` 如何进入缓存，再变成训练张量。SAC 的网络包括策略、两个 Q 网络和对应的目标 Q 网络；此时只需说清它们各自在哪一步被使用。
+
+**留下成果（10 分钟）：**画出“采样 → 缓存 → 随机抽取 → Q 网络与策略更新 → 目标网络更新”的流程图。
+
+**完成标准：**能解释 `sample_batch_size`、`buffer_warm_size`、`replay_batch_size` 的区别，并指出 SAC 为什么能从缓存中反复抽取旧经验。
+
+## 第 4 次：拆开一个车辆轨迹跟踪环境
+
+**先做什么（10 分钟）：**打开 `gops/env/env_gen_ocp/veh3dof_tracking.py`，找到 `Veh3DoFTracking`、`reset()`、`_get_obs()`、`_get_reward()`、`_get_terminated()`。它通过 `env_creator()` 注册；通用 `step()` 在 `gops/env/env_gen_ocp/pyth_base.py` 的 `Env` 类中。
+
+**沿代码走（40 分钟）：**依次查看 `robot/veh3dof.py` 的车辆状态与动作、`context/ref_traj.py` 的参考轨迹、任务文件中的观测和奖励，再回到基类 `step()`。注意代码顺序：先按当前状态计算奖励，再推进车辆和参考轨迹，随后判断终止并生成下一观测；若终止还会扣除终止惩罚。
+
+**留下成果（10 分钟）：**做一张四列表：`变量或对象｜物理意义｜由谁产生｜在哪里使用`。至少填入车辆状态 `[x,y,phi,u,v,w]`、动作 `[steer,ax]`、参考点、观测、奖励、结束标志。源码没有明确单位的项目写“待确认”。
+
+**完成标准：**能说明一次 `step(action)` 怎样改变车辆状态和参考轨迹，以及奖励与下一观测分别从哪一份状态计算。
+
+## 第 5 次：合并两条算法链，练习向师兄讲解
+
+**先做什么（10 分钟）：**把第 2、3 次的流程图放在一起，补齐遗漏的数据字段。
+
+**沿代码走（40 分钟）：**完成下表；每格都能指出至少一个源码位置。
+
+| 问题 | PPO | SAC |
+| --- | --- | --- |
+| 一批新样本由谁采集？ | `OnSampler` | `OffSampler` |
+| 更新前数据放在哪里？ | 当前采样批量，含 `adv/ret` | `ReplayBuffer`，更新时随机抽取 |
+| 策略更新还需要哪些关键量？ | 旧 `logp`、`adv`、`ret` 等 | 回放经验、Q 值与策略输出等 |
+| 参数更新入口在哪里？ | `PPO.local_update()` | `SAC.local_update()` |
+
+再用 `veh3dof_tracking` 举一个概念例子：车辆环境给出观测，策略给出转向与加速度，环境推进状态并返回奖励；若换用 PPO 或 SAC，**环境交互接口相同，训练数据的整理与更新路径不同**。这只是数据流对照，不等于仓库已有这两种算法的车辆训练配置。
+
+**留下成果（10 分钟）：**不看笔记，做一次 3～5 分钟讲解：先讲共同的环境交互，再讲 PPO 与 SAC 的分叉，最后用车辆跟踪说明环境侧的状态、观测和奖励。
+
+**完成标准：**能回答三个问题：① `env.step()` 的输入和输出是什么？② PPO 的 `adv/ret/logp` 与 SAC 的回放经验各从哪里来？③ 车辆跟踪的参考轨迹怎样影响观测与奖励？
+
+## 使用方法
+
+- 每次都按 **10 分钟定位 → 40 分钟追代码 → 10 分钟输出** 执行。一天未完成的内容顺延，不要靠延长阅读时间挤掉画图和讲解。
+- 记录疑问时写上文件路径、函数名和具体不懂的数据字段。下一次先解答上次的一个疑问。
+- 本周以读代码和画数据流为主，不需要运行长训练；已有的 `results/` 可用于认识配置和日志，但三轮冒烟测试结果不能用来评价算法性能。
